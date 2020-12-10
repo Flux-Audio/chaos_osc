@@ -1,0 +1,22 @@
+[package]
+name = "chaos_osc"
+version = "0.2.0"
+authors = ["Lorenzo Panieri <panierilorenzo@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+vst = "0.2.1"
+
+[lib]
+name = "chaos_osc"
+crate-type = ["cdylib"]
+
+[profile.dev]
+opt-level = 1
+lto = "thin"
+
+[profile.release]
+opt-level = 3
+lto = true
