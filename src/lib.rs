@@ -5,12 +5,7 @@ use vst::buffer::AudioBuffer;
 use vst::plugin::{Category, Info, Plugin, PluginParameters};
 use vst::util::AtomicFloat;
 
-use std::collections::VecDeque;
 use std::sync::Arc;
-
-use rand_xoshiro::rand_core::SeedableRng;
-use rand_xoshiro::Xoshiro256Plus;
-use rand_xoshiro::rand_core::RngCore;
 
 mod compute;
 
@@ -20,7 +15,6 @@ struct Effect {
 
     // meta variables
     sr: f32,
-    rng: Xoshiro256Plus,
     scale: f64,     // scaling factor for sr independence of integrals
 
     // pendulum variables
@@ -56,7 +50,6 @@ impl Default for Effect {
 
             // meta variables
             sr: 44100.0,
-            rng: Xoshiro256Plus::seed_from_u64(69_420),
             scale: 1.0,
 
             // pendulum variables
@@ -92,8 +85,6 @@ impl Default for EffectParameters {
 
 // All plugins using `vst` also need to implement the `Plugin` trait.  Here, we
 // define functions that give necessary info to our host.
-// TODO: make it accept and consume MIDI (and not use it) so that Ableton doesn't
-// categorize it as an effect.
 impl Plugin for Effect {
     fn get_info(&self) -> Info {
         Info {
@@ -138,13 +129,6 @@ impl Plugin for Effect {
             let o1_to_o2_mod = self.params.o1_to_o2_mod.get() as f64;
             let mut scale = self.params.scale.get() as f64;
             scale = scale*scale*8.0;
-            /*
-            let scale = self.params.scale.get()/105.0;
-            let m1 = scale;
-            let m2 = scale;
-            
-            let g = scale;
-            */
             let l2 = (self.params.len_ratio.get()*2.0 + 0.01) as f64;
             let l1 = 2.03 - l2;
             
@@ -163,24 +147,12 @@ impl Plugin for Effect {
             
             // update state
             // note that the angular velocity and it's rate of change are both
-            // limited at 1.0 with a saturator, this is to avoid exploding
-            // floating point errors resulting into NaN values. While more
-            // robust ways of doing this might exist, this is how it was done
-            // in the original Reaktor module, and it is now part of its sound
-
-            /*
-            let sat_amt = 0.453515/(scale*self.scale) + 20.0;
-            let dw1_sat = (dw1/sat_amt).tanh()*sat_amt;
-            let dw2_sat = (dw2/sat_amt).tanh()*sat_amt;
-            
-            */
-
-            //self.w1 = ((self.w1 + dw1_sat /*+ nse1*/)*self.scale).tanh();
-            //self.w2 = ((self.w2 + dw2_sat /*+ nse2*/)*self.scale).tanh();
-            //self.w1 = ((self.w1 + dw1)*self.scale).tanh();
-            //self.w2 = ((self.w2 + dw2)*self.scale).tanh();
-            //let dth1 = compute::fade(self.w1, o1_amt, osc1);
-            //let dth2 = compute::fade(self.w2, o2_amt, osc2);
+            // limited with a saturator, this is to avoid the internal pendulum
+            // getting "overdriven" into a stable state (the double pendulum is
+            // only unstable at low angular velocities). While more robust ways 
+            // of doing this might exist, this is how it was done in the original 
+            // Reaktor module, and it is now part of its sound. So please don't
+            // fix this, thanks!
             let sat = 15.0/(scale + 0.01);
             self.w1 = ((self.w1 + dw1*0.1*self.scale*scale)/sat).tanh()*sat;
             self.w2 = ((self.w2 + dw2*0.1*self.scale*scale)/sat).tanh()*sat;
@@ -283,5 +255,5 @@ impl PluginParameters for EffectParameters {
     }
 }
 
-// This part is important!  Without it, our plugin won't work.
+// This part is important! Without it, our plugin won't work.
 plugin_main!(Effect);

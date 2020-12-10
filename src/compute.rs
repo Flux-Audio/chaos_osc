@@ -1,36 +1,3 @@
-/// takes all pendulum variables and returns their next increment
-/*
-pub fn step(th1: f64,  // angle of inner pendulum
-        th2: f64,  // angle of outer pendulum
-        w1: f64,    // angular velocity of inner pendulum
-        w2: f64,    // angular velocity of outer pendulum
-        m1: f64,    // mass of inner pendulum
-        m2: f64,    // mass of outer pendulum
-        L1: f64,    // length of inner pendulum
-        L2: f64,    // length of outer pendulum
-        g: f64      // gravitational acceleration
-    ) -> (f64, f64) /* dw1, dw2 */ {
-
-    // pre-compute reusable values (for optimization)
-    let gamma = th1 - th2;
-    let M = m1 + m2;
-    let w1_2 = w1*w1;
-    let w2_2 = w2*w2;
-    let _2_sin_gamma = 2.0*gamma.sin();
-    let cos_gamma = gamma.cos();
-
-    // actual calculations
-    let aux_0 = 2.0*m1 + m2 - m2*(2.0*gamma).sin();
-    let aux_1 = -g*(2.0*m1 + m2)*th1.sin() - m2*g*(th1 - 2.0*th2).sin();
-    let aux_2 = _2_sin_gamma*m2*(w2_2*L1 + w1_2*L1*cos_gamma);
-    let aux_3 = _2_sin_gamma*(w1_2*L1*M + g*M*th1.cos() + w2_2*L2*m2*cos_gamma);
-    let dw1 = (aux_1 - aux_2)/(L1*aux_0);
-    let dw2 = aux_3/(L2*aux_0);
-
-    return (dw1, dw2);
-}
-*/
-
 /// this is the simplified version of the double pendulum differential equation
 /// system, the old one was broken
 pub fn step(th1: f64, th2: f64, w1: f64, w2: f64, l1: f64, l2: f64)
