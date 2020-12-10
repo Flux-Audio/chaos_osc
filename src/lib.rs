@@ -18,8 +18,18 @@ struct Effect {
     // Store a handle to the plugin's parameter object.
     params: Arc<EffectParameters>,
 
+    // meta variables
     sr: f32,
     rng: Xoshiro256Plus,
+    scale: f64,     // scaling factor for sr independence of integrals
+
+    // pendulum variables
+    th1: f64,
+    th2: f64,
+    osc1_th: f64,
+    osc2_th: f64,
+    w1: f64,
+    w2: f64,
 }
 
 struct EffectParameters {
@@ -44,8 +54,18 @@ impl Default for Effect {
         Effect {
             params: Arc::new(EffectParameters::default()),
 
+            // meta variables
             sr: 44100.0,
             rng: Xoshiro256Plus::seed_from_u64(69_420),
+            scale: 1.0,
+
+            // pendulum variables
+            th1: 3.0,
+            th2: 4.0,
+            osc1_th: 0.0,
+            osc2_th: 0.0,
+            w1: 0.0,
+            w2: 0.0,
         }
     }
 }
@@ -93,6 +113,7 @@ impl Plugin for Effect {
 
     fn set_sample_rate(&mut self, rate: f32){
         self.sr = rate;
+        self.scale = 44100.0 / rate as f64; 
     }
 
     // called once
@@ -102,23 +123,74 @@ impl Plugin for Effect {
     fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
         let (_, outputs) = buffer.split();
 
-        // Iterate over inputs as (&f32, &f32)
-        // let (l, r) = inputs.split_at(1);
-        // let stereo_in = l[0].iter().zip(r[0].iter());
-
         // Iterate over outputs as (&mut f32, &mut f32)
         let (mut l, mut r) = outputs.split_at_mut(1);
         let stereo_out = l[0].iter_mut().zip(r[0].iter_mut());
 
-        // get all params TODO:
-        /*
-        let div = (self.params.div.get()*11.5 + 1.0) as usize;   // scale to int in 1..6
-        */
-
         // process
         for (left_out, right_out) in stereo_out{
-            *left_out = 0.0;
-            *right_out = 0.0;
+            // get params
+            let o1_amt = self.params.o1_amt.get() as f64;
+            let o2_amt = self.params.o2_amt.get() as f64;
+            let o1_f = (self.params.o1_f.get()*8.0 + self.params.o1_fine.get()) as f64;
+            let o2_f = (self.params.o2_f.get()*8.0 + self.params.o2_fine.get()) as f64;
+            let o2_to_o1_mod = self.params.o2_to_o1_mod.get() as f64;
+            let o1_to_o2_mod = self.params.o1_to_o2_mod.get() as f64;
+            let mut scale = self.params.scale.get() as f64;
+            scale = scale*scale*8.0;
+            /*
+            let scale = self.params.scale.get()/105.0;
+            let m1 = scale;
+            let m2 = scale;
+            
+            let g = scale;
+            */
+            let l2 = (self.params.len_ratio.get()*2.0 + 0.01) as f64;
+            let l1 = 2.03 - l2;
+            
+            // oscillators
+            let osc1 = compute::oct_to_rad(o1_f + self.osc2_th.sin()*o2_to_o1_mod, self.sr);
+            let osc2 = compute::oct_to_rad(o2_f + self.osc1_th.sin()*o1_to_o2_mod, self.sr);
+            self.osc1_th = compute::wrap(self.osc1_th + osc1);
+            self.osc2_th = compute::wrap(self.osc2_th + osc2);
+
+            // solve dif.e.
+            let (dth1, dth2, dw1, dw2) = compute::step(
+                self.th1, self.th2,
+                self.w1, self.w2,
+                l1, l2
+            );
+            
+            // update state
+            // note that the angular velocity and it's rate of change are both
+            // limited at 1.0 with a saturator, this is to avoid exploding
+            // floating point errors resulting into NaN values. While more
+            // robust ways of doing this might exist, this is how it was done
+            // in the original Reaktor module, and it is now part of its sound
+
+            /*
+            let sat_amt = 0.453515/(scale*self.scale) + 20.0;
+            let dw1_sat = (dw1/sat_amt).tanh()*sat_amt;
+            let dw2_sat = (dw2/sat_amt).tanh()*sat_amt;
+            
+            */
+
+            //self.w1 = ((self.w1 + dw1_sat /*+ nse1*/)*self.scale).tanh();
+            //self.w2 = ((self.w2 + dw2_sat /*+ nse2*/)*self.scale).tanh();
+            //self.w1 = ((self.w1 + dw1)*self.scale).tanh();
+            //self.w2 = ((self.w2 + dw2)*self.scale).tanh();
+            //let dth1 = compute::fade(self.w1, o1_amt, osc1);
+            //let dth2 = compute::fade(self.w2, o2_amt, osc2);
+            let sat = 15.0/(scale + 0.01);
+            self.w1 = ((self.w1 + dw1*0.1*self.scale*scale)/sat).tanh()*sat;
+            self.w2 = ((self.w2 + dw2*0.1*self.scale*scale)/sat).tanh()*sat;
+            let dth1 = compute::fade((dth1*0.1*self.scale*scale/sat).tanh()*sat, o1_amt, osc1);
+            let dth2 = compute::fade((dth2*0.1*self.scale*scale/sat).tanh()*sat, o2_amt, osc2);
+            self.th1 = compute::wrap(self.th1 + dth1);
+            self.th2 = compute::wrap(self.th2 + dth2);
+
+            *left_out = self.th1.sin() as f32;
+            *right_out = self.th2.sin() as f32;
         }
     }
 
